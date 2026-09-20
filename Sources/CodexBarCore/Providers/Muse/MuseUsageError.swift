@@ -3,6 +3,7 @@ import Foundation
 public enum MuseUsageError: LocalizedError, Sendable, Equatable {
     case missingCredentials
     case invalidCredentials
+    case keychainAccessDisabled
     case keychainUnavailable
     case parseFailed(String)
 
@@ -12,8 +13,12 @@ public enum MuseUsageError: LocalizedError, Sendable, Equatable {
             "Muse Code login not found. Run `muse login`, then refresh CodexBar."
         case .invalidCredentials:
             "Muse Code login was rejected. Run `muse login` again."
+        case .keychainAccessDisabled:
+            "Muse Code login is stored in Keychain. Turn off Disable Keychain access in Settings → Advanced, "
+                + "then refresh."
         case .keychainUnavailable:
-            "Muse Code credentials are in Keychain but could not be read without a prompt."
+            "Muse Code credentials are in Keychain but could not be read without a prompt. "
+                + "Grant CodexBar access to that item in Keychain Access, then refresh."
         case let .parseFailed(message):
             "Could not parse Muse Code login: \(message)"
         }

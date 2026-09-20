@@ -34,8 +34,13 @@ public enum MuseCredentials {
             if let token = try self.keychainAccessToken() {
                 return token
             }
-        } catch MuseUsageError.keychainUnavailable {
-            if authFile != nil { throw MuseUsageError.keychainUnavailable }
+        } catch let error as MuseUsageError {
+            switch error {
+            case .keychainAccessDisabled, .keychainUnavailable:
+                if authFile != nil { throw error }
+            default:
+                throw error
+            }
         }
         throw MuseUsageError.missingCredentials
     }
@@ -87,7 +92,7 @@ public enum MuseCredentials {
     private static func keychainAccessToken() throws -> String? {
         #if os(macOS)
         guard !KeychainAccessGate.isDisabled else {
-            throw MuseUsageError.keychainUnavailable
+            throw MuseUsageError.keychainAccessDisabled
         }
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,

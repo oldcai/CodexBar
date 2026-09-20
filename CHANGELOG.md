@@ -13,6 +13,8 @@
 
 ### Fixed
 
+- Muse Code: name the Disable Keychain access setting when a Keychain-only CLI login cannot be read, instead of implying a prompt is required.
+- Muse Code: keep plan identity when an active login omits quota windows, instead of failing to parse `subs_usage`.
 - Providers: prevent LongCat and Kilo crashes on oversized token or credit counts, retain usable Amp data when durations overflow, and safely format unrepresentable provider timestamps.
 - Providers: prevent crashes on oversized Kimi, Chutes, MiniMax, and Perplexity usage values or durations while preserving usable quota data.
 - Menu bar: assign each status item's stable identity before provider registration, preserving item reuse during reentrant updates (#3665). Thanks @Borisserz!

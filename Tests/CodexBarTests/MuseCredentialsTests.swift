@@ -41,6 +41,50 @@ struct MuseCredentialsTests {
     }
 
     @Test
+    func `Keychain-backed login names the Settings toggle when Keychain access is disabled`() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("auth.json")
+        try Data(#"{"providers":{"meta":{"mechanism":"oauth","storage":"keychain"}}}"#.utf8).write(to: file)
+
+        KeychainAccessGate.withTaskOverrideForTesting(true) {
+            #expect(throws: MuseUsageError.keychainAccessDisabled) {
+                try MuseCredentials.accessToken(
+                    environment: ["MUSE_AUTH_PATH": file.path],
+                    homeDirectory: directory)
+            }
+        }
+        let message = try #require(MuseUsageError.keychainAccessDisabled.errorDescription)
+        #expect(message.contains("Disable Keychain access"))
+        #expect(message.contains("Settings"))
+    }
+
+    @Test
+    func `missing login does not mention Keychain when access is disabled`() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("auth.json")
+        try Data(#"{}"#.utf8).write(to: file)
+
+        KeychainAccessGate.withTaskOverrideForTesting(true) {
+            #expect(throws: MuseUsageError.missingCredentials) {
+                try MuseCredentials.accessToken(
+                    environment: ["MUSE_AUTH_PATH": file.path],
+                    homeDirectory: directory)
+            }
+        }
+    }
+
+    @Test
+    func `prompt-required Keychain error stays distinct from the disabled-access toggle`() throws {
+        let message = try #require(MuseUsageError.keychainUnavailable.errorDescription)
+        #expect(message.contains("could not be read without a prompt"))
+        #expect(!message.contains("Disable Keychain access"))
+    }
+
+    @Test
     func `invalid inline credentials cannot fall through to another Keychain login`() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

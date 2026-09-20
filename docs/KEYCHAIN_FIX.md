@@ -22,7 +22,7 @@ User-facing behavior and troubleshooting live in [Keychain prompts](keychain-pro
 - Chromium imports use a no-UI preflight and scope the dependency's actual background record read with
   `BrowserCookieKeychainAccessGate.withUserInteractionDisallowed`. A user-initiated explicit retry keeps the one
   acknowledged interactive recovery path.
-- Foreign-item readers, including Zed, check the global gate at their ownership boundary and fail closed.
+- Foreign-item readers, including Zed and Muse, check the global gate at their ownership boundary and fail closed.
 - Claude Code's Keychain item is foreign-owned. Direct reads require explicit, default-off consent and have their own
   prompt policy. Provider-owned CLI fallback is intentionally outside the global Security.framework gate because the
   child executable owns its credential behavior.
