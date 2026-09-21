@@ -89,6 +89,52 @@ struct MuseFetchStrategyTests {
         }
         #expect(seenTokens.value == ["dca:fixture-stale", "dca:fixture-stale"])
         #expect(attempts.value == 2)
+        // The re-read credential was rejected too, so it must not linger in the cache to be
+        // sent again (and rejected again) on the next refresh.
+        #expect(MuseCredentials.cachedToken(
+            environment: context.env,
+            homeDirectory: FileManager.default.homeDirectoryForCurrentUser) == nil)
+    }
+
+    @Test
+    func `retry may prompt when the first attempt served a cached token`() async throws {
+        let preAlerts = LockIsolated(0)
+        let seenTokens = LockIsolated<[String]>([])
+        let snapshot = UsageSnapshot(primary: nil, secondary: nil, updatedAt: Date())
+        let context = self.makeContext(env: ["MUSE_AUTH_PATH": self.freshAuthPath()])
+        // Seed the cache with a token the CLI later rotates away.
+        let seedReads: ([String: Any]) -> (OSStatus, Data?) = { _ in (errSecSuccess, Self.stalePayload) }
+        _ = try await self.fetch(context: context, dataRead: seedReads) { _ in snapshot }
+        // The CLI rotated the value and reset the item ACL afterwards: the cached token is
+        // rejected, and the retry re-read is this refresh's first Keychain read, so it may
+        // prompt once instead of failing closed.
+        let recordPreAlert: (KeychainPromptContext) -> Void = { _ in
+            preAlerts.setValue(preAlerts.value + 1)
+        }
+        let dataRead: ([String: Any]) -> (OSStatus, Data?) = { _ in (errSecSuccess, Self.rotatedPayload) }
+        let stubPreflight: (String, String?) -> KeychainAccessPreflight.Outcome = { _, _ in .interactionRequired }
+        let result = try await KeychainAccessGate.withTaskOverrideForTesting(false) {
+            try await ProviderInteractionContext.$current.withValue(.userInitiated) {
+                try await KeychainAccessPreflight.withCheckGenericPasswordOverrideForTesting(stubPreflight) {
+                    try await MuseCredentials.withKeychainDataReadOverrideForTesting(dataRead) {
+                        try await KeychainPromptHandler.withHandlerForTesting(recordPreAlert) {
+                            try await MuseOAuthFetchStrategy().fetch(context) { token in
+                                seenTokens.setValue(seenTokens.value + [token])
+                                if token == "dca:fixture-stale" {
+                                    throw ProviderFetchClassifiedError(
+                                        kind: .authenticationExpired,
+                                        message: "fixture")
+                                }
+                                return snapshot
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        #expect(result.sourceLabel == "oauth")
+        #expect(seenTokens.value == ["dca:fixture-stale", "dca:fixture-rotated"])
+        #expect(preAlerts.value == 1)
     }
 
     @Test
