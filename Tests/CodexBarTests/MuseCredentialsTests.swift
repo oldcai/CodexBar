@@ -95,13 +95,14 @@ struct MuseKeychainPreflightTests {
         interaction: ProviderInteraction,
         dataRead: (([String: Any]) -> (OSStatus, Data?))?,
         onPreflight: ((String, String?) -> Void)? = nil,
+        keychainDisabled: Bool = false,
         operation: () throws -> T) throws -> T
     {
         let stubPreflight: (String, String?) -> KeychainAccessPreflight.Outcome = { service, account in
             onPreflight?(service, account)
             return preflight
         }
-        return try KeychainAccessGate.withTaskOverrideForTesting(false) {
+        return try KeychainAccessGate.withTaskOverrideForTesting(keychainDisabled) {
             try ProviderInteractionContext.$current.withValue(interaction) {
                 try KeychainAccessPreflight.withCheckGenericPasswordOverrideForTesting(stubPreflight) {
                     try MuseCredentials.withKeychainDataReadOverrideForTesting(dataRead, operation: operation)
@@ -132,7 +133,8 @@ struct MuseKeychainPreflightTests {
         interaction: ProviderInteraction = .background,
         authFileBody: String? = nil,
         dataRead: (([String: Any]) -> (OSStatus, Data?))? = nil,
-        onPreflight: ((String, String?) -> Void)? = nil) throws -> String
+        onPreflight: ((String, String?) -> Void)? = nil,
+        keychainDisabled: Bool = false) throws -> String
     {
         if let authFileBody {
             let directory = home.appendingPathComponent(".config/muse", isDirectory: true)
@@ -143,7 +145,8 @@ struct MuseKeychainPreflightTests {
             preflight: preflight,
             interaction: interaction,
             dataRead: dataRead,
-            onPreflight: onPreflight)
+            onPreflight: onPreflight,
+            keychainDisabled: keychainDisabled)
         {
             try MuseCredentials.accessToken(environment: [:], homeDirectory: home)
         }
@@ -164,13 +167,15 @@ struct MuseKeychainPreflightTests {
         preflight: KeychainAccessPreflight.Outcome,
         interaction: ProviderInteraction = .background,
         dataRead: (([String: Any]) -> (OSStatus, Data?))? = nil,
-        onPreflight: ((String, String?) -> Void)? = nil) throws -> Bool
+        onPreflight: ((String, String?) -> Void)? = nil,
+        keychainDisabled: Bool = false) throws -> Bool
     {
         try self.withMuseKeychainDoubles(
             preflight: preflight,
             interaction: interaction,
             dataRead: dataRead,
-            onPreflight: onPreflight)
+            onPreflight: onPreflight,
+            keychainDisabled: keychainDisabled)
         {
             MuseCredentials.hasLogin(environment: [:], homeDirectory: home)
         }
@@ -395,6 +400,34 @@ struct MuseKeychainPreflightTests {
         }
         #expect(dataReadAttempts == 1)
         #expect(preflightChecks == 1)
+    }
+
+    @Test
+    func `disabling keychain access drops the cached token`() throws {
+        let dataRead: ([String: Any]) -> (OSStatus, Data?) = { _ in (errSecSuccess, Self.keychainPayload) }
+        try self.withIsolatedHome { home in
+            let first = try self.accessTokenOnHome(home, preflight: .allowed, dataRead: dataRead)
+            #expect(first == "dca:fixture-keychain")
+            // Disabling Keychain access after a successful read drops the cached token: the
+            // provider no longer reports a login and never serves the cached secret.
+            #expect(try self.hasLoginOnHome(
+                home,
+                preflight: .allowed,
+                dataRead: dataRead,
+                keychainDisabled: true) == false)
+            #expect(throws: MuseUsageError.missingCredentials) {
+                try self.accessTokenOnHome(home, preflight: .allowed, dataRead: dataRead, keychainDisabled: true)
+            }
+            // Re-enabling does not resurrect the dropped token: the next read goes to Keychain.
+            var reReads = 0
+            let reRead: ([String: Any]) -> (OSStatus, Data?) = { _ in
+                reReads += 1
+                return (errSecSuccess, Self.keychainPayload)
+            }
+            let second = try self.accessTokenOnHome(home, preflight: .allowed, dataRead: reRead)
+            #expect(second == "dca:fixture-keychain")
+            #expect(reReads == 1)
+        }
     }
 
     @Test

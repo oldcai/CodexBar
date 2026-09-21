@@ -19,7 +19,7 @@ public enum MuseCredentials {
         if self.authFileRecord(environment: environment, homeDirectory: homeDirectory) != nil {
             return true
         }
-        if self.cachedToken(environment: environment, homeDirectory: homeDirectory) != nil {
+        if self.cachedTokenWhenKeychainEnabled(environment: environment, homeDirectory: homeDirectory) != nil {
             return true
         }
         return (try? self.keychainAccessToken(allowsPrompt: false)) != nil
@@ -37,7 +37,7 @@ public enum MuseCredentials {
         if let token = authFile?.accessToken {
             return try self.requireAccessToken(token)
         }
-        if let cached = self.cachedToken(environment: environment, homeDirectory: homeDirectory) {
+        if let cached = self.cachedTokenWhenKeychainEnabled(environment: environment, homeDirectory: homeDirectory) {
             return cached
         }
         do {
@@ -56,11 +56,25 @@ public enum MuseCredentials {
     /// Keychain item on use, which resets the item ACL and wipes previously granted access;
     /// reusing a known-good token keeps refreshes working (and silent) until the API actually
     /// rejects it. Inline auth-file tokens are cheap file reads and always take precedence, so
-    /// only keychain-resolved tokens are cached.
+    /// only keychain-resolved tokens are cached. Cached entries are served only while the
+    /// global Keychain access gate allows it; reads under a disabled gate drop the cache.
     private static let tokenCache = MuseTokenCache()
 
     static func cachedToken(environment: [String: String], homeDirectory: URL) -> String? {
         self.tokenCache.token(forKey: self.cacheKey(environment: environment, homeDirectory: homeDirectory))
+    }
+
+    /// Keychain-derived tokens stay behind the global access gate: while Keychain access is
+    /// disabled, previously cached tokens are dropped and never served.
+    private static func cachedTokenWhenKeychainEnabled(
+        environment: [String: String],
+        homeDirectory: URL) -> String?
+    {
+        if KeychainAccessGate.isDisabled {
+            self.tokenCache.removeAll()
+            return nil
+        }
+        return self.cachedToken(environment: environment, homeDirectory: homeDirectory)
     }
 
     static func invalidateCachedToken(environment: [String: String], homeDirectory: URL) {
