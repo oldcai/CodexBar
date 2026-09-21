@@ -90,19 +90,27 @@ struct MuseOAuthFetchStrategy: ProviderFetchStrategy {
             return try await self.performFetch(context, usageFetcher: usageFetcher)
         } catch let error as ProviderFetchClassifiedError where error.kind == .authenticationExpired {
             // The token was rejected: drop the cached credential and retry once against whatever
-            // the CLI currently trusts before reporting the failure.
+            // the CLI currently trusts before reporting the failure. The retry re-read never
+            // prompts: the first attempt already spent this fetch's single manual-refresh
+            // authorization, and a second modal would contradict the documented behavior.
             MuseCredentials.invalidateCachedToken(
                 environment: context.env,
                 homeDirectory: FileManager.default.homeDirectoryForCurrentUser)
-            return try await self.performFetch(context, usageFetcher: usageFetcher)
+            return try await self.performFetch(
+                context,
+                usageFetcher: usageFetcher,
+                allowsInteractivePrompt: false)
         }
     }
 
     private func performFetch(
         _ context: ProviderFetchContext,
-        usageFetcher: (String) async throws -> UsageSnapshot) async throws -> ProviderFetchResult
+        usageFetcher: (String) async throws -> UsageSnapshot,
+        allowsInteractivePrompt: Bool = true) async throws -> ProviderFetchResult
     {
-        let token = try MuseCredentials.accessToken(environment: context.env)
+        let token = try MuseCredentials.accessToken(
+            environment: context.env,
+            allowsInteractivePrompt: allowsInteractivePrompt)
         let snapshot = try await usageFetcher(token)
         return self.makeResult(usage: snapshot, sourceLabel: "oauth")
     }

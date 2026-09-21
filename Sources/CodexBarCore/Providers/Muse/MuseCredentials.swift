@@ -25,9 +25,13 @@ public enum MuseCredentials {
         return (try? self.keychainAccessToken(allowsPrompt: false)) != nil
     }
 
+    /// - Parameter allowsInteractivePrompt: False when the caller already spent this fetch's
+    ///   single manual-refresh authorization (the auth-expired retry): the re-read then fails
+    ///   closed instead of prompting a second time.
     public static func accessToken(
         environment: [String: String] = ProcessInfo.processInfo.environment,
-        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser) throws -> String
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
+        allowsInteractivePrompt: Bool = true) throws -> String
     {
         let authFile = self.authFileRecord(environment: environment, homeDirectory: homeDirectory)
         if let token = authFile?.accessToken {
@@ -37,7 +41,7 @@ public enum MuseCredentials {
             return cached
         }
         do {
-            if let token = try self.keychainAccessToken(allowsPrompt: true) {
+            if let token = try self.keychainAccessToken(allowsPrompt: allowsInteractivePrompt) {
                 self.storeCachedToken(token, environment: environment, homeDirectory: homeDirectory)
                 return token
             }

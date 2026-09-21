@@ -91,6 +91,45 @@ struct MuseFetchStrategyTests {
         #expect(attempts.value == 2)
     }
 
+    @Test
+    func `auth-expired retry never prompts Keychain a second time`() async throws {
+        let dataReads = LockIsolated(0)
+        let preAlerts = LockIsolated(0)
+        let seenTokens = LockIsolated<[String]>([])
+        let dataRead: ([String: Any]) -> (OSStatus, Data?) = { _ in
+            dataReads.setValue(dataReads.value + 1)
+            return (errSecSuccess, Self.stalePayload)
+        }
+        let usageFetcher: (String) async throws -> UsageSnapshot = { token in
+            seenTokens.setValue(seenTokens.value + [token])
+            throw ProviderFetchClassifiedError(kind: .authenticationExpired, message: "fixture")
+        }
+        let context = self.makeContext(env: ["MUSE_AUTH_PATH": self.freshAuthPath()])
+        // The ACL still requires interaction after the first authorized read (a one-time Allow,
+        // or the CLI rewrote the item between the two reads): the retry re-read must fail
+        // closed instead of showing a second authorization prompt.
+        let recordPreAlert: (KeychainPromptContext) -> Void = { _ in
+            preAlerts.setValue(preAlerts.value + 1)
+        }
+        let stubPreflight: (String, String?) -> KeychainAccessPreflight.Outcome = { _, _ in .interactionRequired }
+        await #expect(throws: MuseUsageError.missingCredentials) {
+            try await KeychainAccessGate.withTaskOverrideForTesting(false) {
+                try await ProviderInteractionContext.$current.withValue(.userInitiated) {
+                    try await KeychainAccessPreflight.withCheckGenericPasswordOverrideForTesting(stubPreflight) {
+                        try await MuseCredentials.withKeychainDataReadOverrideForTesting(dataRead) {
+                            try await KeychainPromptHandler.withHandlerForTesting(recordPreAlert) {
+                                try await MuseOAuthFetchStrategy().fetch(context, usageFetcher: usageFetcher)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        #expect(preAlerts.value == 1)
+        #expect(dataReads.value == 1)
+        #expect(seenTokens.value == ["dca:fixture-stale"])
+    }
+
     private func fetch(
         context: ProviderFetchContext,
         dataRead: @escaping ([String: Any]) -> (OSStatus, Data?),
