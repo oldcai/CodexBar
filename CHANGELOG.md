@@ -16,6 +16,7 @@
 - Linux installation: preserve managed configuration symlinks and UTF-8 glyphs across reinstalls, and recover dangling Omarchy adapter links (#3784). Thanks @jsonMartin!
 - Linux packaging: include executable contents when the selected binary is a symlink, keeping archives self-contained (#3784).
 - OpenCode Go: restore migrated Console quota windows and prepaid Zen balances, preserve independent legacy sessions, and keep missing reset times unknown instead of reporting expired credentials or immediate resets (#3796, fixes #3783). Thanks @kays0x and @NOIPJohnny!
+- Muse: preflight the CLI-owned Keychain item's decrypt ACL before requesting secret bytes, so scheduled refreshes fail closed instead of surfacing the legacy authorization prompt again; an explicit manual refresh may ask once so access can be authorized. Resolved tokens are cached in memory and only re-read after a rejection, so the CLI's own credential rewrites no longer break refreshes.
 
 ### Improved
 

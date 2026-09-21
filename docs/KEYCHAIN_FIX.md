@@ -23,6 +23,9 @@ User-facing behavior and troubleshooting live in [Keychain prompts](keychain-pro
   `BrowserCookieKeychainAccessGate.withUserInteractionDisallowed`. A user-initiated explicit retry keeps the one
   acknowledged interactive recovery path.
 - Foreign-item readers, including Zed, check the global gate at their ownership boundary and fail closed.
+  Muse additionally gates its `kSecReturnData` query on a decrypt-ACL preflight, because data queries can surface
+  the legacy ACL prompt even with UI-fail policy. An explicit user-initiated refresh may attempt one interactive
+  read after the Muse pre-alert so a missing grant can be authorized; availability probes never prompt.
 - Claude Code's Keychain item is foreign-owned. Direct reads require explicit, default-off consent and have their own
   prompt policy. Provider-owned CLI fallback is intentionally outside the global Security.framework gate because the
   child executable owns its credential behavior.

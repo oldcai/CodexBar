@@ -1216,6 +1216,7 @@
 "Reported by OpenAI Admin API organization usage." = "Rapporteras av OpenAI Admin API:s organisationsanvändning.";
 "%@: %@ credits" = "%@: %@ krediter";
 "CodexBar will ask macOS Keychain for your Kimi auth token so it can fetch usage. Click OK to continue." = "CodexBar kommer att be macOS Nyckelring om din Kimi-autentiseringstoken så att användning kan hämtas. Klicka på OK för att fortsätta.";
+"CodexBar will ask macOS Keychain for your Muse Code login so it can fetch usage. Click OK to continue." = "CodexBar kommer att be macOS Nyckelring om din Muse Code-inloggning så att användning kan hämtas. Klicka på OK för att fortsätta.";
 "Keychain Access Required" = "Åtkomst till Nyckelring krävs";
 "keychain_prompt_learn_more" = "Läs mer…";
 "keychain_prompt_privacy_note" = "Inmatningen av Mac-inloggningslösenordet hanteras av macOS, inte CodexBar. Du kan när som helst inaktivera åtkomst till Nyckelring under Inställningar → Avancerat.";

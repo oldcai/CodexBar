@@ -74,9 +74,36 @@ struct MuseOAuthFetchStrategy: ProviderFetchStrategy {
     }
 
     func fetch(_ context: ProviderFetchContext) async throws -> ProviderFetchResult {
-        let token = try MuseCredentials.accessToken(environment: context.env)
+        try await self.fetch(context, usageFetcher: Self.liveUsageFetcher)
+    }
+
+    static func liveUsageFetcher(token: String) async throws -> UsageSnapshot {
         let runtime = try ProviderPluginRuntime(bundledPlugin: "muse")
-        let snapshot = try await runtime.fetchUsage(secrets: ["MUSE_DEVICE_TOKEN": token])
+        return try await runtime.fetchUsage(secrets: ["MUSE_DEVICE_TOKEN": token])
+    }
+
+    func fetch(
+        _ context: ProviderFetchContext,
+        usageFetcher: (String) async throws -> UsageSnapshot) async throws -> ProviderFetchResult
+    {
+        do {
+            return try await self.performFetch(context, usageFetcher: usageFetcher)
+        } catch let error as ProviderFetchClassifiedError where error.kind == .authenticationExpired {
+            // The token was rejected: drop the cached credential and retry once against whatever
+            // the CLI currently trusts before reporting the failure.
+            MuseCredentials.invalidateCachedToken(
+                environment: context.env,
+                homeDirectory: FileManager.default.homeDirectoryForCurrentUser)
+            return try await self.performFetch(context, usageFetcher: usageFetcher)
+        }
+    }
+
+    private func performFetch(
+        _ context: ProviderFetchContext,
+        usageFetcher: (String) async throws -> UsageSnapshot) async throws -> ProviderFetchResult
+    {
+        let token = try MuseCredentials.accessToken(environment: context.env)
+        let snapshot = try await usageFetcher(token)
         return self.makeResult(usage: snapshot, sourceLabel: "oauth")
     }
 

@@ -49,6 +49,9 @@ private enum KeychainPromptMessage {
     static let ampCookie =
         "CodexBar will ask macOS Keychain for your Amp cookie header " +
         "so it can fetch usage. Click OK to continue."
+    static let museToken =
+        "CodexBar will ask macOS Keychain for your Muse Code login " +
+        "so it can fetch usage. Click OK to continue."
 }
 
 struct KeychainPromptAlertModel: Equatable {
@@ -158,6 +161,8 @@ enum KeychainPromptCoordinator {
             L(KeychainPromptMessage.augmentCookie)
         case .ampCookie:
             L(KeychainPromptMessage.ampCookie)
+        case .museToken:
+            L(KeychainPromptMessage.museToken)
         }
         return self.alertModel(purpose: purpose)
     }

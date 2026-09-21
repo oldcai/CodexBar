@@ -1116,6 +1116,7 @@
 "CodexBar will ask macOS Keychain for your Factory cookie header so it can fetch usage. Click OK to continue." = "CodexBar 将向 macOS 钥匙串请求你的 Factory Cookie 标头，以获取用量。点击“确定”继续。";
 "CodexBar will ask macOS Keychain for your GitHub Copilot token so it can fetch usage. Click OK to continue." = "CodexBar 将向 macOS 钥匙串请求你的 GitHub Copilot token，以获取用量。点击“确定”继续。";
 "CodexBar will ask macOS Keychain for your Kimi auth token so it can fetch usage. Click OK to continue." = "CodexBar 将向 macOS 钥匙串请求你的 Kimi 认证 token，以获取用量。点击“确定”继续。";
+"CodexBar will ask macOS Keychain for your Muse Code login so it can fetch usage. Click OK to continue." = "CodexBar 将向 macOS 钥匙串请求你的 Muse Code 登录信息，以获取用量。点击“确定”继续。";
 "CodexBar will ask macOS Keychain for your MiniMax API token so it can fetch usage. Click OK to continue." = "CodexBar 将向 macOS 钥匙串请求你的 MiniMax API token，以获取用量。点击“确定”继续。";
 "CodexBar will ask macOS Keychain for your MiniMax cookie header so it can fetch usage. Click OK to continue." = "CodexBar 将向 macOS 钥匙串请求你的 MiniMax Cookie 标头，以获取用量。点击“确定”继续。";
 "CodexBar will ask macOS Keychain for your OpenAI cookie header so it can fetch Codex dashboard extras. Click OK to continue." = "CodexBar 将向 macOS 钥匙串请求你的 OpenAI Cookie 标头，以获取 Codex 仪表盘额外数据。点击“确定”继续。";
