@@ -1966,7 +1966,15 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "This exact shared renderer maps provider-owned presentation data into the generic UI model."),
         AllowedProviderConstruct(
             path: "Sources/CodexBar/MenuCardView+ModelHelpers.swift",
-            line: 1018,
+            line: 959,
+            anchor: "} else if input.provider == .antigravity, namedWindow.id == \"antigravity-offline-conversations\" {",
+            expectedProviderIDs: ["antigravity", "claude", "doubao"],
+            expectedReferenceCount: 3,
+            expectedReferenceFingerprint: ["antigravity@0", "claude@9", "doubao@12"],
+            reason: "Offline Antigravity history has no quota; Claude scoped and Doubao team titles remain provider-owned."),
+        AllowedProviderConstruct(
+            path: "Sources/CodexBar/MenuCardView+ModelHelpers.swift",
+            line: 1021,
             anchor: "guard provider == .kiro, namedWindow.id == \"kiro-overage\",",
             expectedProviderIDs: ["kiro"],
             expectedReferenceCount: 1,
@@ -1974,7 +1982,7 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "This exact shared renderer maps provider-owned presentation data into the generic UI model."),
         AllowedProviderConstruct(
             path: "Sources/CodexBar/MenuCardView+ModelHelpers.swift",
-            line: 1046,
+            line: 1049,
             anchor: "if input.provider == .antigravity,",
             expectedProviderIDs: ["antigravity"],
             expectedReferenceCount: 1,
@@ -1982,7 +1990,7 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "This exact shared renderer maps provider-owned presentation data into the generic UI model."),
         AllowedProviderConstruct(
             path: "Sources/CodexBar/MenuCardView+ModelHelpers.swift",
-            line: 1082,
+            line: 1085,
             anchor: "if provider == .claude || provider == .cursor, window.windowMinutes != 10080 {",
             expectedProviderIDs: ["antigravity", "claude", "codex", "cursor"],
             expectedReferenceCount: 6,
@@ -1997,7 +2005,7 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "This exact shared renderer maps provider-owned presentation data into the generic UI model."),
         AllowedProviderConstruct(
             path: "Sources/CodexBar/MenuCardView+ModelHelpers.swift",
-            line: 1116,
+            line: 1119,
             anchor: "guard input.provider == .antigravity else { return nil }",
             expectedProviderIDs: ["antigravity"],
             expectedReferenceCount: 1,
