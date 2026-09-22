@@ -98,6 +98,12 @@ private final class AntigravityCLIOutputSequence: @unchecked Sendable {
 
 struct AntigravityCLIHTTPSFetchStrategyTests {
     @Test
+    func `saved OAuth accounts are passive only for explicit CLI source mode`() throws {
+        let support = try #require(TokenAccountSupportCatalog.support(for: .antigravity))
+        #expect(support.passiveSourceModes == [.cli])
+    }
+
+    @Test
     func `local strategy falls back to cli HTTPS in cli source mode`() {
         let strategy = AntigravityStatusFetchStrategy()
         let context = self.makeFetchContext(sourceMode: .cli)
@@ -292,17 +298,6 @@ struct AntigravityCLIHTTPSFetchStrategyTests {
         {
             try AntigravitySelectedAccountGuard.validate(usage, context: context)
         }
-    }
-
-    @Test
-    func `account guard leaves explicit cli source mode authoritative`() throws {
-        let usage = self.makeUsage(accountEmail: "ambient@example.com")
-        let context = self.makeFetchContext(
-            sourceMode: .cli,
-            selectedTokenAccountID: UUID(),
-            env: self.accountEnv(email: "selected@example.com"))
-
-        try AntigravitySelectedAccountGuard.validate(usage, context: context)
     }
 
     @Test
@@ -1252,5 +1247,74 @@ private struct AntigravityFallbackFixtureStrategy: ProviderFetchStrategy {
 
     func shouldFallback(on _: Error, context _: ProviderFetchContext) -> Bool {
         self.allowsFallback
+    }
+}
+
+extension AntigravityCLIHTTPSFetchStrategyTests {
+    @Test
+    func `account guard leaves explicit cli source mode authoritative`() throws {
+        let usage = self.makeUsage(accountEmail: "ambient@example.com")
+        let context = self.makeFetchContext(
+            sourceMode: .cli,
+            selectedTokenAccountID: UUID(),
+            env: self.accountEnv(email: "selected@example.com"))
+
+        try AntigravitySelectedAccountGuard.validate(usage, context: context)
+    }
+
+    @Test
+    func `account guard accepts matching ambient snapshot in cli mode`() throws {
+        let usage = self.makeUsage(accountEmail: "Selected@Example.com")
+        let context = self.makeFetchContext(
+            sourceMode: .cli,
+            selectedTokenAccountID: UUID(),
+            env: self.accountEnv(email: "selected@example.com"))
+
+        try AntigravitySelectedAccountGuard.validate(usage, context: context)
+    }
+
+    @Test
+    func `account guard ignores cli fetches without a selected account`() throws {
+        let usage = self.makeUsage(accountEmail: "ambient@example.com")
+        let context = self.makeFetchContext(
+            sourceMode: .cli,
+            env: self.accountEnv(email: "selected@example.com"))
+
+        try AntigravitySelectedAccountGuard.validate(usage, context: context)
+    }
+
+    @Test
+    func `cli HTTPS fails fast on definitive snapshot account mismatch`() async {
+        let fetchAttempts = AntigravityCLICounter()
+
+        await #expect(throws: AntigravityStatusProbeError.accountMismatch(
+            expected: "selected@example.com",
+            found: "ambient@example.com"))
+        {
+            try await AntigravityCLIHTTPSFetchStrategy.waitForSnapshot(
+                pid: 123,
+                deadline: Date().addingTimeInterval(30),
+                expectedAccountEmail: "selected@example.com",
+                dependencies: makeAntigravitySnapshotDependencies(
+                    pollIntervalNanoseconds: 0,
+                    listeningPorts: { _, _ in [50080] },
+                    drainOutput: { Data() },
+                    fetchSnapshot: { _ in
+                        fetchAttempts.increment()
+                        return AntigravityStatusSnapshot(
+                            modelQuotas: [
+                                AntigravityModelQuota(
+                                    label: "Claude Sonnet",
+                                    modelId: "claude-sonnet",
+                                    remainingFraction: 0.5,
+                                    resetTime: nil,
+                                    resetDescription: nil),
+                            ],
+                            accountEmail: "ambient@example.com",
+                            accountPlan: "Pro",
+                            source: .local)
+                    }))
+        }
+        #expect(fetchAttempts.value == 1)
     }
 }

@@ -8,7 +8,8 @@ public enum AntigravityProviderDescriptor {
         placeholder: "Antigravity OAuth credentials JSON",
         injection: .environment(key: AntigravityOAuthCredentialsStore.environmentCredentialsKey),
         requiresManualCookieSource: false,
-        cookieName: nil))
+        cookieName: nil,
+        passiveSourceModes: [.cli]))
 
     static func makeDescriptor() -> ProviderDescriptor {
         ProviderDescriptor(
@@ -299,7 +300,7 @@ struct AntigravityStatusFetchStrategy: ProviderFetchStrategy {
 
     func fetch(_ context: ProviderFetchContext) async throws -> ProviderFetchResult {
         let probe = AntigravityStatusProbe(processScope: self.source.processScope)
-        let selectedAccountEmail: String? = if context.sourceMode == .auto, context.selectedTokenAccountID != nil {
+        let selectedAccountEmail: String? = if AntigravitySelectedAccountGuard.shouldEnforce(context: context) {
             AntigravitySelectedAccountGuard.selectedAccountEmail(context: context)
         } else {
             nil
@@ -518,9 +519,7 @@ struct AntigravityCLIHTTPSFetchStrategy: ProviderFetchStrategy {
         guard let binary = BinaryLocator.resolveAntigravityBinary(env: context.env) else {
             throw AntigravityStatusProbeError.notRunning
         }
-        let expectedAccountEmail: String? = if context.sourceMode == .auto,
-                                               context.selectedTokenAccountID != nil
-        {
+        let expectedAccountEmail: String? = if AntigravitySelectedAccountGuard.shouldEnforce(context: context) {
             AntigravitySelectedAccountGuard.selectedAccountEmail(context: context)
         } else {
             nil
@@ -556,7 +555,9 @@ struct AntigravityCLIHTTPSFetchStrategy: ProviderFetchStrategy {
         } catch {
             try Task.checkCancellation()
             if error is CancellationError { throw error }
-            // Identity-free reports must not replace a selected or injected OAuth account's fallback.
+            // Print reports carry no identity. In Auto they cannot replace a selected or
+            // injected OAuth account, even if another local tool stores matching credentials.
+            // Explicit CLI mode remains authoritative for the CLI's own signed-in account.
             guard context.sourceMode != .auto || (context.selectedTokenAccountID == nil &&
                 context.env[AntigravityOAuthCredentialsStore.environmentCredentialsKey] == nil)
             else { throw error }
@@ -803,9 +804,19 @@ struct AntigravityCLIHTTPSFetchStrategy: ProviderFetchStrategy {
                     {
                         return readySnapshot
                     }
+                    // A definitive mismatch (both sides identified) fails fast so
+                    // other accounts do not burn the full readiness deadline.
                     // Fresh `agy` processes can answer quota endpoints before the
                     // signed-in account email is available; keep polling so the
                     // account guard does not reject the cold-start snapshot.
+                    if AntigravitySelectedAccountGuard.isDefinitiveMismatch(
+                        snapshotAccountEmail: readySnapshot.accountEmail,
+                        expectedAccountEmail: expectedAccountEmail)
+                    {
+                        throw AntigravityStatusProbeError.accountMismatch(
+                            expected: expectedAccountEmail,
+                            found: readySnapshot.accountEmail)
+                    }
                     lastFetchError = AntigravityStatusProbeError.accountMismatch(
                         expected: expectedAccountEmail,
                         found: readySnapshot.accountEmail)
@@ -977,22 +988,39 @@ struct AntigravityOfflineFetchStrategy: ProviderFetchStrategy {
 /// Guards ambient Antigravity snapshots against the explicitly selected account.
 ///
 /// The local desktop probe and the ``agy`` CLI HTTPS server report whichever
-/// Antigravity account is signed into the local session. When the user has
-/// selected a specific saved Google account, an ambient probe can return a
-/// *different* account's quota. Only the OAuth strategy is account-scoped (it
-/// fetches with the selected account's injected credentials), so in ``auto``
-/// mode we reject a snapshot whose identity does not match the selected account
-/// and let the pipeline fall through to OAuth. Explicit ``cli``/``oauth`` source
-/// modes stay authoritative and are never second-guessed here.
+/// Antigravity account is signed into the local session. In ``auto`` mode, a
+/// selected Google account requires a matching snapshot identity; otherwise the
+/// pipeline falls through to account-scoped OAuth. Explicit ``cli`` mode uses
+/// the local session's account, independently of the saved Google selection.
 enum AntigravitySelectedAccountGuard {
+    static func shouldEnforce(context: ProviderFetchContext) -> Bool {
+        context.sourceMode == .auto && context.selectedTokenAccountID != nil
+    }
+
     static func matches(snapshotAccountEmail: String?, expectedAccountEmail: String?) -> Bool {
         guard let expected = self.normalizedEmail(expectedAccountEmail) else { return true }
         guard let found = self.normalizedEmail(snapshotAccountEmail) else { return false }
         return found.caseInsensitiveCompare(expected) == .orderedSame
     }
 
+    /// A mismatch is definitive only when both sides carry an identity email.
+    /// Fresh local servers can answer quota endpoints before the signed-in
+    /// account email is available, so an unknown snapshot email must keep
+    /// polling instead of failing the selected account immediately.
+    static func isDefinitiveMismatch(
+        snapshotAccountEmail: String?,
+        expectedAccountEmail: String?) -> Bool
+    {
+        guard let expected = self.normalizedEmail(expectedAccountEmail),
+              let found = self.normalizedEmail(snapshotAccountEmail)
+        else {
+            return false
+        }
+        return found.caseInsensitiveCompare(expected) != .orderedSame
+    }
+
     static func validate(_ usage: UsageSnapshot, context: ProviderFetchContext) throws {
-        guard context.sourceMode == .auto, context.selectedTokenAccountID != nil else { return }
+        guard self.shouldEnforce(context: context) else { return }
         let expected = self.selectedAccountEmail(context: context)
         let found = self.normalizedEmail(usage.identity?.accountEmail)
         guard let expected, let found, found.caseInsensitiveCompare(expected) == .orderedSame else {

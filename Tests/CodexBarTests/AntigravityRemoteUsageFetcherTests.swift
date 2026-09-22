@@ -520,6 +520,73 @@ struct AntigravityRemoteUsageFetcherTests {
     }
 
     @Test
+    func `remote fetch reports unknown quotas when full quotas cannot be verified`() async throws {
+        let env = try GeminiTestEnvironment()
+        defer { env.cleanup() }
+        try env.writeAntigravityCredentials(
+            accessToken: "token",
+            refreshToken: nil,
+            expiry: Date().addingTimeInterval(3600),
+            idToken: GeminiAPITestHelpers.makeIDToken(email: "user@example.com"),
+            email: "user@example.com")
+
+        let dataLoader = GeminiAPITestHelpers.dataLoader { request in
+            guard let url = request.url, let host = url.host else {
+                throw URLError(.badURL)
+            }
+
+            switch host {
+            case "cloudcode-pa.googleapis.com":
+                if url.path == "/v1internal:loadCodeAssist" {
+                    return GeminiAPITestHelpers.response(
+                        url: url.absoluteString,
+                        status: 200,
+                        body: GeminiAPITestHelpers.loadCodeAssistResponse(
+                            tierId: "standard-tier",
+                            projectId: "managed-project-123"))
+                }
+                if url.path == "/v1internal:fetchAvailableModels" {
+                    return GeminiAPITestHelpers.response(
+                        url: url.absoluteString,
+                        status: 200,
+                        body: GeminiAPITestHelpers.jsonData([
+                            "models": [
+                                "gemini-2.5-pro": [
+                                    "displayName": "Gemini 2.5 Pro",
+                                    "quotaInfo": ["remainingFraction": 1],
+                                ],
+                                "gemini-2.5-flash": [
+                                    "displayName": "Gemini 2.5 Flash",
+                                    "quotaInfo": ["remainingFraction": 1],
+                                ],
+                            ],
+                        ]))
+                }
+                if url.path == "/v1internal:retrieveUserQuota" {
+                    return GeminiAPITestHelpers.response(
+                        url: url.absoluteString,
+                        status: 403,
+                        body: Data("You do not have a valid license of this product.".utf8))
+                }
+                return GeminiAPITestHelpers.response(url: url.absoluteString, status: 404, body: Data())
+            default:
+                return GeminiAPITestHelpers.response(url: url.absoluteString, status: 404, body: Data())
+            }
+        }
+
+        let snapshot = try await AntigravityRemoteUsageFetcher(
+            timeout: 1,
+            homeDirectory: env.homeURL.path,
+            dataLoader: dataLoader)
+            .fetch()
+
+        // The models feed reports stale 100% while real quotas are consumed,
+        // so unverifiable full quotas must stay unknown instead of showing 0% used.
+        #expect(snapshot.modelQuotas.isEmpty)
+        #expect(snapshot.accountEmail == "user@example.com")
+    }
+
+    @Test
     func `remote fetch propagates quota verification server errors`() async throws {
         let env = try GeminiTestEnvironment()
         defer { env.cleanup() }

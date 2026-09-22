@@ -216,6 +216,10 @@ public struct AntigravityRemoteUsageFetcher: Sendable {
                     projectId: projectId,
                     timeout: timeout,
                     dataLoader: dataLoader)
+                // Unverifiable full quotas stay unknown: the models feed is known
+                // to report stale 100% while real quotas are consumed, and the
+                // verification endpoint can return 403 for accounts without quota
+                // access, so retaining the models could display unverified data.
                 guard let quotaBuckets, Self.hasQuotaFractionData(quotaBuckets) else {
                     return []
                 }

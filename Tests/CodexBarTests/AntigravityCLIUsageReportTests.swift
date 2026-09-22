@@ -158,7 +158,7 @@ extension AntigravityCLIHTTPSFetchStrategyTests {
     }
 
     @Test
-    func `explicit CLI mode retains its source authority`() async throws {
+    func `explicit CLI mode retains its source authority for print reports`() async throws {
         let context = self.makeFetchContext(
             sourceMode: .cli, selectedTokenAccountID: UUID(), env: self.accountEnv(email: "selected@example.com"))
         let expected = AntigravityCLIHTTPSFetchStrategy().makeResult(
@@ -168,6 +168,86 @@ extension AntigravityCLIHTTPSFetchStrategyTests {
             legacyFetch: { throw AntigravityStatusProbeError.timedOut },
             reportFetch: { expected })
         #expect(result.usage.identity?.accountEmail == nil)
+        #expect(result.sourceLabel == "cli")
+    }
+
+    @Test
+    func `explicit CLI mode retains local HTTPS identity despite a different selected account`() async throws {
+        let context = self.makeFetchContext(
+            sourceMode: .cli, selectedTokenAccountID: UUID(), env: self.accountEnv(email: "selected@example.com"))
+        let expected = AntigravityCLIHTTPSFetchStrategy().makeResult(
+            usage: self.makeUsage(accountEmail: "ambient@example.com"), sourceLabel: "cli")
+        let result = try await AntigravityCLIHTTPSFetchStrategy.fetchWithReportFallback(
+            context: context,
+            legacyFetch: { expected },
+            reportFetch: {
+                Issue.record("Explicit CLI must retain the successful local-account HTTPS result")
+                return expected
+            })
+        #expect(result.usage.identity?.accountEmail == "ambient@example.com")
+    }
+
+    @Test(arguments: [true, false])
+    func `matching Gemini files cannot attribute identity free print to an auto account`(hasActiveAccount: Bool)
+        async throws
+    {
+        let home = try Self.geminiHome(
+            activeAccount: hasActiveAccount ? "Selected@Example.com" : nil,
+            oauthIDToken: GeminiAPITestHelpers.makeIDToken(email: "selected@example.com"))
+        defer { try? FileManager.default.removeItem(at: home) }
+        var env = self.accountEnv(email: "selected@example.com")
+        env["HOME"] = home.path
+        let context = self.makeFetchContext(selectedTokenAccountID: UUID(), env: env)
+        await #expect(throws: AntigravityStatusProbeError.timedOut) {
+            try await AntigravityCLIHTTPSFetchStrategy.fetchWithReportFallback(
+                context: context,
+                legacyFetch: { throw AntigravityStatusProbeError.timedOut },
+                reportFetch: {
+                    Issue.record("Gemini credentials do not identify the agy account")
+                    throw AntigravityStatusProbeError.notRunning
+                })
+        }
+    }
+
+    @Test(arguments: [true, false])
+    func `definitive legacy mismatch cannot be replaced by identity free print`(legacyThrows: Bool) async throws {
+        let home = try Self.geminiHome(activeAccount: "selected@example.com")
+        defer { try? FileManager.default.removeItem(at: home) }
+        var env = self.accountEnv(email: "selected@example.com")
+        env["HOME"] = home.path
+        let context = self.makeFetchContext(selectedTokenAccountID: UUID(), env: env)
+        let mismatch = AntigravityStatusProbeError.accountMismatch(
+            expected: "selected@example.com", found: "ambient@example.com")
+        let ambient = AntigravityCLIHTTPSFetchStrategy().makeResult(
+            usage: self.makeUsage(accountEmail: "ambient@example.com"), sourceLabel: "cli")
+        await #expect(throws: mismatch) {
+            try await AntigravityCLIHTTPSFetchStrategy.fetchWithReportFallback(
+                context: context,
+                legacyFetch: {
+                    if legacyThrows { throw mismatch }
+                    return ambient
+                },
+                reportFetch: {
+                    Issue.record("An account mismatch must not be hidden by an unattributed report")
+                    throw AntigravityStatusProbeError.notRunning
+                })
+        }
+    }
+
+    private static func geminiHome(activeAccount: String?, oauthIDToken: String? = nil) throws -> URL {
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("antigravity-gemini-home-\(UUID().uuidString)", isDirectory: true)
+        let geminiDirectory = home.appendingPathComponent(".gemini", isDirectory: true)
+        try FileManager.default.createDirectory(at: geminiDirectory, withIntermediateDirectories: true)
+        if let activeAccount {
+            let payload = try JSONSerialization.data(withJSONObject: ["active": activeAccount])
+            try payload.write(to: geminiDirectory.appendingPathComponent("google_accounts.json"))
+        }
+        if let oauthIDToken {
+            let payload = try JSONSerialization.data(withJSONObject: ["id_token": oauthIDToken])
+            try payload.write(to: geminiDirectory.appendingPathComponent("oauth_creds.json"))
+        }
+        return home
     }
 
     @Test

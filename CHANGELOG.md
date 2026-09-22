@@ -13,6 +13,7 @@
 
 ### Fixed
 
+- Antigravity: preserve the local account in explicit CLI mode, reject identity-free reports for account-scoped Auto fetches, fail promptly on identified account mismatches, and clarify that offline conversation counts are not quota measurements.
 - Widgets: retain eligible last-known measurements at their original age when a failed refresh leaves every provider entry empty, while respecting provider and account invalidation (#3500). Thanks @jaxleezhang!
 - Grok: send a nonempty billing request while preserving legacy monthly usage and leaving unknown percentages unchanged (#3336). Thanks @CharlieLZ!
 - Claude: recover expired default-profile OAuth credentials from an already-observed live Keychain token, preserving existing consent, prompt policy, and cooldown checks (#3390).

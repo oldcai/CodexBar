@@ -956,6 +956,9 @@ extension UsageMenuCardView.Model {
             }
             let statusText: String? = if usageKnown {
                 nil
+            } else if input.provider == .antigravity, namedWindow.id == "antigravity-offline-conversations" {
+                // Local history is not evidence of a live quota or an offline network.
+                L("Limits not available")
             } else if let resetText {
                 "\(L("Unavailable")) - \(resetText)"
             } else {

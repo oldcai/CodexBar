@@ -5,6 +5,23 @@ import Testing
 
 struct MenuCardAntigravityTests {
     @Test
+    func `antigravity offline history explicitly reports unavailable limits`() throws {
+        let model = try Self.quotaSummaryModel(
+            windows: [NamedRateWindow(
+                id: "antigravity-offline-conversations",
+                title: "Offline · 502 conversations",
+                window: RateWindow(usedPercent: 0, windowMinutes: nil, resetsAt: nil, resetDescription: nil),
+                usageKnown: false)],
+            now: Date(timeIntervalSince1970: 1_742_771_200))
+
+        let metric = try #require(model.metrics.first)
+        #expect(model.metrics.count == 1)
+        #expect(metric.title == "Offline · 502 conversations")
+        #expect(metric.statusText == "Limits not available")
+        #expect(metric.resetText == nil)
+    }
+
+    @Test
     func `antigravity identity only snapshot shows limits unavailable`() throws {
         let now = Date(timeIntervalSince1970: 1_742_771_200)
         let metadata = try #require(ProviderDefaults.metadata[.antigravity])

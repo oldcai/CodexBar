@@ -47,8 +47,9 @@ Antigravity supports four usage data sources:
 
 The app-local `language_server` exists only while Antigravity.app is running. With the app closed,
 CodexBar relies on the `agy` CLI HTTPS source or the Google OAuth fallback. Without a signed-in
-`agy`, the OAuth fallback can only prove model availability, so the menu shows an all-100%
-placeholder instead of real quota numbers. A freshly spawned `agy` needs a few seconds for macOS
+`agy`, the OAuth fallback may only prove model availability. Unverified all-100% model responses
+are not quota measurements: the menu shows `Limits not available` when quota access is denied.
+A freshly spawned `agy` needs a few seconds for macOS
 keyring authentication before its quota endpoints answer, so the first refresh after a cold start
 can take a few extra seconds while CodexBar waits for readiness; later refreshes reuse the warmed session.
 
@@ -74,6 +75,16 @@ empty quota card. Auto also skips `agy` reports without account identity when a 
 because it cannot verify that those quotas belong to that account. Settings explains this beside **Usage source**.
 To try the local app or `agy` account instead, select **Local API / agy CLI** (CLI: `--source cli`).
 That source may use a different signed-in account from the Google account selected in CodexBar; it does not verify a match.
+Saved Google accounts remain stored but inactive in this mode: they do not label local reports or trigger
+per-account refreshes. CLI account selectors (`--account`, `--account-index`, `--all-accounts`) require
+`--source auto` or `--source oauth`, not `--source cli`.
+Gemini CLI's `google_accounts.json` and `oauth_creds.json` do not establish the `agy` account and must
+not be used to attribute identity-free reports. An identified account mismatch in Auto fails promptly;
+an initializing server with no identity may still be polled within the readiness deadline.
+
+If every live source fails or is unavailable, local history may appear as `Offline · N conversations`.
+`N` counts local history files, not HTTP errors or remaining quota. The menu explicitly labels this
+row `Limits not available`; it does not draw a quota bar for the history count.
 
 ## OAuth account switching
 
