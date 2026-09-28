@@ -23,6 +23,8 @@ Credential precedence: when `providers.meta.access_token` is present inline in t
 
 The Keychain item belongs to the Muse CLI, so its access list may not include CodexBar. CodexBar checks that access list without requesting the token. If access would require a prompt or the check cannot complete, refreshes fail promptly without reading the token. This applies to background refreshes, manual app refreshes, and the `codexbar` CLI: CodexBar never prompts Keychain for Muse. Detecting whether a Muse login exists never requests its secret. A Keychain-only item detected as requiring interaction keeps the access diagnostic even when the CLI metadata file is absent.
 
+Once a Keychain token has been resolved, CodexBar reuses it in memory for the rest of the app session instead of reading Keychain on every refresh: the CLI rewrites its own item whenever it runs, which resets the item's access list and wipes previously granted access, so without the cache every terminal use would break the next refresh. A token the API rejects clears the cache and retries once against a freshly re-read credential.
+
 When a Keychain-only login cannot be read because Keychain access is disabled, the diagnostic names **Disable Keychain access** in **Settings → Advanced**. Inline CLI tokens still work with Keychain access disabled.
 
 ## Data shown

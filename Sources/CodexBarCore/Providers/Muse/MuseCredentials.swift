@@ -16,7 +16,13 @@ public enum MuseCredentials {
         environment: [String: String] = ProcessInfo.processInfo.environment,
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser) -> Bool
     {
-        self.authFileRecord(environment: environment, homeDirectory: homeDirectory) != nil || self.hasKeychainItem()
+        if self.authFileRecord(environment: environment, homeDirectory: homeDirectory) != nil {
+            return true
+        }
+        if self.cachedTokenWhenKeychainEnabled(environment: environment, homeDirectory: homeDirectory) != nil {
+            return true
+        }
+        return self.hasKeychainItem()
     }
 
     public static func accessToken(
@@ -27,14 +33,77 @@ public enum MuseCredentials {
         if let token = authFile?.accessToken {
             return try self.requireAccessToken(token)
         }
+        if let cached = self.cachedTokenWhenKeychainEnabled(environment: environment, homeDirectory: homeDirectory) {
+            return cached
+        }
         do {
             if let token = try self.keychainAccessToken() {
+                self.storeCachedToken(token, environment: environment, homeDirectory: homeDirectory)
                 return token
             }
         } catch let error as MuseUsageError where error == .keychainAccessDisabled || error == .keychainUnavailable {
             if error == .keychainUnavailable || authFile != nil { throw error }
         }
         throw MuseUsageError.missingCredentials
+    }
+
+    /// In-memory cache of keychain-resolved device tokens, keyed by the resolved auth-file URL
+    /// so distinct homes (and test fixtures) never share entries. The owning CLI rewrites its
+    /// Keychain item on use, which resets the item ACL and wipes previously granted access;
+    /// reusing a known-good token keeps refreshes working (and silent) until the API actually
+    /// rejects it. Inline auth-file tokens are cheap file reads and always take precedence, so
+    /// only keychain-resolved tokens are cached. Cached entries are served only while the
+    /// global Keychain access gate allows it; reads under a disabled gate drop the cache.
+    private static let tokenCache = MuseTokenCache()
+
+    static func cachedToken(environment: [String: String], homeDirectory: URL) -> String? {
+        self.tokenCache.token(forKey: self.cacheKey(environment: environment, homeDirectory: homeDirectory))
+    }
+
+    /// Keychain-derived tokens stay behind the global access gate: while Keychain access is
+    /// disabled, previously cached tokens are dropped and never served.
+    private static func cachedTokenWhenKeychainEnabled(
+        environment: [String: String],
+        homeDirectory: URL) -> String?
+    {
+        if KeychainAccessGate.isDisabled {
+            self.tokenCache.removeAll()
+            return nil
+        }
+        return self.cachedToken(environment: environment, homeDirectory: homeDirectory)
+    }
+
+    static func invalidateCachedToken(environment: [String: String], homeDirectory: URL) {
+        self.tokenCache.removeToken(forKey: self.cacheKey(environment: environment, homeDirectory: homeDirectory))
+    }
+
+    private static func cacheKey(environment: [String: String], homeDirectory: URL) -> String {
+        self.authFileURL(environment: environment, homeDirectory: homeDirectory).absoluteString
+    }
+
+    private static func storeCachedToken(_ token: String, environment: [String: String], homeDirectory: URL) {
+        self.tokenCache.setToken(token, forKey: self.cacheKey(environment: environment, homeDirectory: homeDirectory))
+    }
+
+    private final class MuseTokenCache: @unchecked Sendable {
+        private let lock = NSLock()
+        private var tokens: [String: String] = [:]
+
+        func token(forKey key: String) -> String? {
+            self.lock.withLock { self.tokens[key] }
+        }
+
+        func setToken(_ token: String, forKey key: String) {
+            self.lock.withLock { self.tokens[key] = token }
+        }
+
+        func removeToken(forKey key: String) {
+            self.lock.withLock { self.tokens[key] = nil }
+        }
+
+        func removeAll() {
+            self.lock.withLock { self.tokens.removeAll() }
+        }
     }
 
     static func accessToken(fromKeychainPayload data: Data) throws -> String {

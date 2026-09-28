@@ -99,7 +99,51 @@ struct MuseOAuthFetchStrategy: ProviderFetchStrategy {
     }
 
     func fetch(_ context: ProviderFetchContext) async throws -> ProviderFetchResult {
+        try await self.fetch(context) { token in
+            try await Self.livePluginResult(context: context, token: token)
+        }
+    }
+
+    func fetch(
+        _ context: ProviderFetchContext,
+        usageFetcher: (String) async throws -> ProviderPluginResult) async throws -> ProviderFetchResult
+    {
+        do {
+            return try await self.performFetch(context, usageFetcher: usageFetcher)
+        } catch let error as ProviderFetchClassifiedError where error.kind == .authenticationExpired {
+            // The token was rejected: drop the cached credential and retry once against whatever
+            // the CLI currently trusts before reporting the failure.
+            MuseCredentials.invalidateCachedToken(
+                environment: context.env,
+                homeDirectory: FileManager.default.homeDirectoryForCurrentUser)
+            do {
+                return try await self.performFetch(context, usageFetcher: usageFetcher)
+            } catch let retryError as ProviderFetchClassifiedError
+                where retryError.kind == .authenticationExpired
+            {
+                // The re-read credential was rejected too: drop it so later refreshes re-read
+                // instead of leading with a known-rejected token on every attempt.
+                MuseCredentials.invalidateCachedToken(
+                    environment: context.env,
+                    homeDirectory: FileManager.default.homeDirectoryForCurrentUser)
+                throw retryError
+            }
+        }
+    }
+
+    private func performFetch(
+        _ context: ProviderFetchContext,
+        usageFetcher: (String) async throws -> ProviderPluginResult) async throws -> ProviderFetchResult
+    {
         let token = try MuseCredentials.accessToken(environment: context.env)
+        let result = try await usageFetcher(token)
+        return self.makeResult(usage: result.usage, sourceLabel: result.sourceLabel ?? "oauth")
+    }
+
+    private static func livePluginResult(
+        context: ProviderFetchContext,
+        token: String) async throws -> ProviderPluginResult
+    {
         // The key request (15 s) and the bounded dev.meta.ai fallback (5 × 8 s) fit one 60 s deadline.
         let runtime = try ProviderPluginRuntime(bundledPlugin: "muse", timeout: 60)
         let cookies = ProviderPluginCookieBroker(
@@ -107,7 +151,7 @@ struct MuseOAuthFetchStrategy: ProviderFetchStrategy {
         // Reading the browser session is opt-in: an unconfigured Muse provider keeps its CLI-token-only behavior.
         let settings = context.settings?[MuseProviderSettingsKey.self]
         let cookieSource = settings?.cookieSource ?? .off
-        let result = try await runtime.fetchResult(
+        return try await runtime.fetchResult(
             settings: settings?.webTeamID.map { ["MUSE_WEB_TEAM_ID": $0] } ?? [:],
             secrets: ["MUSE_DEVICE_TOKEN": token],
             sourceMode: context.sourceMode,
@@ -116,7 +160,6 @@ struct MuseOAuthFetchStrategy: ProviderFetchStrategy {
             cookieSessionResolver: { try cookies.nextSession(domain: $0, cachedOnly: $1) },
             cookieSessionInvalidator: { cookies.rejectCookie(domain: $0, id: $1) },
             cookieResolver: { _, domain in try cookies.cookieHeader(domain: domain) })
-        return self.makeResult(usage: result.usage, sourceLabel: result.sourceLabel ?? "oauth")
     }
 
     func shouldFallback(on _: Error, context _: ProviderFetchContext) -> Bool {
