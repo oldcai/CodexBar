@@ -8,7 +8,7 @@
 
 ### Fixed
 
-- Muse: reuse the resolved Keychain token in memory and only re-read after the API rejects it (single retry), so the CLI's own credential rewrites no longer break the next refresh (#4109).
+- Muse: stop re-asking the Keychain password after every terminal CLI use by reusing the resolved Keychain token in memory, re-reading only after an API rejection (single retry) (#4109).
 
 ## 0.69.0 — 2026-09-28
 
